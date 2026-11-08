@@ -14,5 +14,10 @@ public interface HighlightSource {
 
     boolean labels();
 
+    /** Whether living targets get a small health bar next to their box. */
+    default boolean healthBars() {
+        return false;
+    }
+
     void collect(float partialTick, List<Target> out);
 }
