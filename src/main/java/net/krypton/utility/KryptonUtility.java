@@ -15,9 +15,9 @@ import net.krypton.utility.inventory.InventoryUi;
 import net.krypton.utility.module.FullbrightModule;
 import net.krypton.utility.render.EspRenderer;
 import net.krypton.utility.render.Projector;
-import net.minecraft.class_2960;
-import net.minecraft.class_304;
-import net.minecraft.class_310;
+import net.minecraft.client.KeyMapping;
+import net.minecraft.client.Minecraft;
+import net.minecraft.resources.Identifier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -35,14 +35,14 @@ public final class KryptonUtility implements ClientModInitializer {
         ConfigManager.captureDefaults();
         ConfigManager.load();
 
-        class_304.class_11900 category = class_304.class_11900.method_74698(class_2960.method_60655(MOD_ID, "main"));
+        KeyMapping.Category category = KeyMapping.Category.register(Identifier.fromNamespaceAndPath(MOD_ID, "main"));
         Keybinds.register(category);
 
         ClientTickEvents.END_CLIENT_TICK.register(KryptonUtility::tick);
 
         // HUD + screen-space ESP, drawn after the vanilla subtitles element
         HudElementRegistry.attachElementAfter(VanillaHudElements.SUBTITLES,
-                class_2960.method_60655(MOD_ID, "overlay"), HudRenderer::render);
+                Identifier.fromNamespaceAndPath(MOD_ID, "overlay"), HudRenderer::render);
 
         // camera matrices for the projected ESP + depth-tested "World 3D" boxes
         WorldRenderEvents.END_EXTRACTION.register(Projector::capture);
@@ -61,7 +61,7 @@ public final class KryptonUtility implements ClientModInitializer {
         SafeLog.info("Krypton Utility loaded (client-only, no network access)");
     }
 
-    private static void tick(class_310 mc) {
+    private static void tick(Minecraft mc) {
         Keybinds.tick(mc);
         FullbrightModule.tickFade(mc);
         ModuleManager.tick(mc);
