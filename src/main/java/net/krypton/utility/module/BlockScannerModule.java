@@ -1,6 +1,7 @@
 package net.krypton.utility.module;
 
 import net.krypton.utility.core.Category;
+import net.krypton.utility.render.Projector;
 import net.krypton.utility.core.Module;
 import net.krypton.utility.core.setting.BlockListSetting;
 import net.krypton.utility.core.setting.BoolSetting;
@@ -10,16 +11,16 @@ import net.krypton.utility.render.EspRenderer;
 import net.krypton.utility.render.HighlightSource;
 import net.krypton.utility.render.Target;
 import net.krypton.utility.ui.Theme;
-import net.minecraft.class_2248;
-import net.minecraft.class_2338;
-import net.minecraft.class_2350;
-import net.minecraft.class_238;
-import net.minecraft.class_243;
-import net.minecraft.class_2680;
-import net.minecraft.class_2818;
-import net.minecraft.class_2826;
-import net.minecraft.class_310;
-import net.minecraft.class_638;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.chunk.LevelChunk;
+import net.minecraft.world.level.chunk.LevelChunkSection;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.multiplayer.ClientLevel;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -33,7 +34,7 @@ import java.util.Map;
  * instance, and every chunk result is cached until it expires or the selection changes.
  */
 public final class BlockScannerModule extends Module implements HighlightSource {
-    private record Hit(long pos, class_2248 block) {
+    private record Hit(long pos, Block block) {
     }
 
     private record CachedChunk(List<Hit> hits, int scannedAt) {
@@ -106,9 +107,9 @@ public final class BlockScannerModule extends Module implements HighlightSource 
     }
 
     @Override
-    public void onTick(class_310 mc) {
-        class_638 level = mc.field_1687;
-        if (level == null || mc.field_1724 == null) {
+    public void onTick(Minecraft mc) {
+        ClientLevel level = mc.level;
+        if (level == null || mc.player == null) {
             return;
         }
         tickCounter++;
@@ -116,15 +117,15 @@ public final class BlockScannerModule extends Module implements HighlightSource 
             seenVersion = blocks.version();
             cache.clear();
         }
-        Map<class_2248, Integer> targets = blocks.resolved();
+        Map<Block, Integer> targets = blocks.resolved();
         if (targets.isEmpty()) {
             cache.clear();
             return;
         }
         int r = radius.asInt();
-        class_243 center = FreecamModule.viewCenter(mc);
-        int pcx = ((int) Math.floor(center.field_1352)) >> 4;
-        int pcz = ((int) Math.floor(center.field_1350)) >> 4;
+        Vec3 center = FreecamModule.viewCenter(mc);
+        int pcx = ((int) Math.floor(center.x)) >> 4;
+        int pcz = ((int) Math.floor(center.z)) >> 4;
 
         cache.keySet().removeIf(k -> {
             int cx = (int) (k >> 32);
@@ -134,7 +135,7 @@ public final class BlockScannerModule extends Module implements HighlightSource 
 
         int budget = chunksPerTick.asInt();
         int interval = scanInterval.asInt();
-        int py = (int) Math.floor(center.field_1351);
+        int py = (int) Math.floor(center.y);
         for (int ring = 0; ring <= r && budget > 0; ring++) {
             for (int dx = -ring; dx <= ring && budget > 0; dx++) {
                 for (int dz = -ring; dz <= ring && budget > 0; dz++) {
@@ -147,7 +148,7 @@ public final class BlockScannerModule extends Module implements HighlightSource 
                     if (cached != null && tickCounter - cached.scannedAt() < interval) {
                         continue;
                     }
-                    class_2818 chunk = level.method_2935().method_21730(cx, cz);
+                    LevelChunk chunk = level.getChunkSource().getChunkNow(cx, cz);
                     if (chunk == null) {
                         continue;
                     }
@@ -158,9 +159,9 @@ public final class BlockScannerModule extends Module implements HighlightSource 
         }
     }
 
-    private CachedChunk scan(class_638 level, class_2818 chunk, int cx, int cz, int py, Map<class_2248, Integer> targets) {
-        int minY = level.method_8597().comp_651();
-        int maxY = minY + level.method_8597().comp_652() - 1;
+    private CachedChunk scan(ClientLevel level, LevelChunk chunk, int cx, int cz, int py, Map<Block, Integer> targets) {
+        int minY = level.dimensionType().minY();
+        int maxY = minY + level.dimensionType().height() - 1;
         int y0 = Math.max(minY, py - rangeDown.asInt());
         int y1 = Math.min(maxY, py + rangeUp.asInt());
         List<Hit> hits = new ArrayList<>();
@@ -168,14 +169,14 @@ public final class BlockScannerModule extends Module implements HighlightSource 
             return new CachedChunk(hits, tickCounter);
         }
         boolean exposed = exposedOnly.get();
-        class_2826[] sections = chunk.method_12006();
-        int firstSection = chunk.method_31602(y0);
-        int lastSection = chunk.method_31602(y1);
-        class_2338.class_2339 pos = new class_2338.class_2339();
-        class_2338.class_2339 neighbour = new class_2338.class_2339();
+        LevelChunkSection[] sections = chunk.getSections();
+        int firstSection = chunk.getSectionIndex(y0);
+        int lastSection = chunk.getSectionIndex(y1);
+        BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
+        BlockPos.MutableBlockPos neighbour = new BlockPos.MutableBlockPos();
         for (int si = firstSection; si <= lastSection && si < sections.length; si++) {
-            class_2826 section = sections[si];
-            if (section == null || section.method_38292()) {
+            LevelChunkSection section = sections[si];
+            if (section == null || section.hasOnlyAir()) {
                 continue;
             }
             int sectionMinY = minY + si * 16;
@@ -184,14 +185,14 @@ public final class BlockScannerModule extends Module implements HighlightSource 
             for (int x = 0; x < 16; x++) {
                 for (int z = 0; z < 16; z++) {
                     for (int ly = ly0; ly <= ly1; ly++) {
-                        class_2680 state = section.method_12254(x, ly, z);
-                        class_2248 block = state.method_26204();
+                        BlockState state = section.getBlockState(x, ly, z);
+                        Block block = state.getBlock();
                         if (!targets.containsKey(block)) {
                             continue;
                         }
-                        pos.method_10103((cx << 4) + x, sectionMinY + ly, (cz << 4) + z);
+                        pos.set((cx << 4) + x, sectionMinY + ly, (cz << 4) + z);
                         if (!exposed || isExposed(level, pos, neighbour)) {
-                            hits.add(new Hit(pos.method_10063(), block));
+                            hits.add(new Hit(pos.asLong(), block));
                         }
                     }
                 }
@@ -200,10 +201,10 @@ public final class BlockScannerModule extends Module implements HighlightSource 
         return new CachedChunk(hits, tickCounter);
     }
 
-    private static boolean isExposed(class_638 level, class_2338 pos, class_2338.class_2339 tmp) {
-        for (class_2350 d : class_2350.values()) {
-            tmp.method_10101(pos).method_10098(d);
-            if (!level.method_8320(tmp).method_26225()) {
+    private static boolean isExposed(ClientLevel level, BlockPos pos, BlockPos.MutableBlockPos tmp) {
+        for (Direction d : Direction.values()) {
+            tmp.set(pos).move(d);
+            if (!level.getBlockState(tmp).isSolidRender()) {
                 return true;
             }
         }
@@ -229,20 +230,20 @@ public final class BlockScannerModule extends Module implements HighlightSource 
 
     @Override
     public void collect(float pt, List<Target> out) {
-        class_310 mc = class_310.method_1551();
-        if (mc.field_1724 == null) {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.player == null) {
             return;
         }
-        class_243 cam = mc.field_1773.method_19418().method_71156();
+        Vec3 cam = Projector.camera();
         double maxSq = maxDistance.asDouble() * maxDistance.asDouble();
-        Map<class_2248, Integer> colors = blocks.resolved();
+        Map<Block, Integer> colors = blocks.resolved();
         boolean accent = colorMode.is("Accent");
         List<Target> all = new ArrayList<>();
-        class_2338.class_2339 p = new class_2338.class_2339();
+        BlockPos.MutableBlockPos p = new BlockPos.MutableBlockPos();
         for (CachedChunk c : cache.values()) {
             for (Hit h : c.hits()) {
-                p.method_16363(h.pos());
-                double d = class_243.method_24953(p).method_1025(cam);
+                p.set(h.pos());
+                double d = Vec3.atCenterOf(p).distanceToSqr(cam);
                 if (d > maxSq) {
                     continue;
                 }
@@ -252,12 +253,12 @@ public final class BlockScannerModule extends Module implements HighlightSource 
                 }
                 String label = null;
                 if (labels.get()) {
-                    label = h.block().method_9518().getString();
+                    label = h.block().getName().getString();
                     if (showDistance.get()) {
                         label = label + "  " + (int) Math.sqrt(d) + "m";
                     }
                 }
-                all.add(new Target(new class_238(p).method_1011(0.02), accent ? Theme.accent() : color, label, d));
+                all.add(new Target(new AABB(p).deflate(0.02), accent ? Theme.accent() : color, label, d));
             }
         }
         all.sort((a, b) -> Double.compare(a.distSq(), b.distSq()));
