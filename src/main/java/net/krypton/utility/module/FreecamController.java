@@ -254,6 +254,19 @@ final class FreecamController {
         camera.setYRot(yaw);
         camera.setXRot(pitch);
         camera.setOldPosAndRot();
+        syncHead();
+    }
+
+    /**
+     * A living entity is rendered from its HEAD rotation, not from yRot: without this the camera pitch followed the
+     * mouse but the horizontal rotation stayed stuck.
+     */
+    private void syncHead() {
+        camera.setYHeadRot(yaw);
+        camera.yHeadRot = yaw;
+        camera.yHeadRotO = yaw;
+        camera.yBodyRot = yaw;
+        camera.yBodyRotO = yaw;
     }
 
     // ------------------------------------------------------------------ user actions
@@ -268,6 +281,7 @@ final class FreecamController {
         // keep the previous rotation in sync so mouse look is not delayed by tick interpolation
         camera.yRotO = yaw;
         camera.xRotO = pitch;
+        syncHead();
     }
 
     void adjustSpeed(Minecraft mc, int direction) {
