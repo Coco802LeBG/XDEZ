@@ -4,11 +4,11 @@ import net.krypton.utility.core.Category;
 import net.krypton.utility.core.Module;
 import net.krypton.utility.core.setting.BoolSetting;
 import net.krypton.utility.core.setting.NumberSetting;
-import net.minecraft.class_1297;
-import net.minecraft.class_243;
-import net.minecraft.class_304;
-import net.minecraft.class_310;
-import net.minecraft.class_315;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.phys.Vec3;
+import net.minecraft.client.KeyMapping;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.Options;
 
 /**
  * Detached camera. Everything is rendered locally: the player stays where it is and no packet is produced by the
@@ -111,20 +111,20 @@ public final class FreecamModule extends Module {
 
     @Override
     protected boolean canEnable() {
-        class_310 mc = class_310.method_1551();
-        return mc.field_1724 != null && mc.field_1687 != null && !mc.field_1724.method_29504();
+        Minecraft mc = Minecraft.getInstance();
+        return mc.player != null && mc.level != null && !mc.player.isDeadOrDying();
     }
 
     @Override
     protected void onEnable() {
-        controller.start(class_310.method_1551());
+        controller.start(Minecraft.getInstance());
         active = true;
     }
 
     @Override
     protected void onDisable() {
         active = false;
-        controller.stop(class_310.method_1551());
+        controller.stop(Minecraft.getInstance());
     }
 
     @Override
@@ -135,70 +135,70 @@ public final class FreecamModule extends Module {
     }
 
     @Override
-    public void onTick(class_310 mc) {
+    public void onTick(Minecraft mc) {
         controller.tick(mc);
     }
 
     // ------------------------------------------------------------------ actions bound to keys (see Keybinds)
 
-    public void returnToStart(class_310 mc) {
+    public void returnToStart(Minecraft mc) {
         if (controller.isRunning()) {
             controller.returnToStart(mc);
         }
     }
 
-    public void snapToBody(class_310 mc) {
+    public void snapToBody(Minecraft mc) {
         if (controller.isRunning()) {
             controller.snapToBody(mc);
         }
     }
 
-    public void toggleControl(class_310 mc) {
+    public void toggleControl(Minecraft mc) {
         if (controller.isRunning()) {
             controller.toggleControl(mc);
         }
     }
 
-    public void teleportBody(class_310 mc) {
+    public void teleportBody(Minecraft mc) {
         if (controller.isRunning()) {
             controller.teleportBody(mc);
         }
     }
 
-    public void cycleFollow(class_310 mc) {
+    public void cycleFollow(Minecraft mc) {
         if (controller.isRunning() && !controller.controlBody()) {
             controller.cycleFollow(mc);
         }
     }
 
-    public void followLookedAt(class_310 mc) {
+    public void followLookedAt(Minecraft mc) {
         if (controller.isRunning() && !controller.controlBody()) {
             controller.followLookedAt(mc);
         }
     }
 
-    public void adjustSpeed(class_310 mc, int direction) {
+    public void adjustSpeed(Minecraft mc, int direction) {
         if (controller.isRunning() && !controller.controlBody()) {
             controller.adjustSpeed(mc, direction);
         }
     }
 
     /** Where the ESP scanners look from: the free camera while Freecam is on, otherwise the player. */
-    public static class_243 viewCenter(class_310 mc) {
+    public static Vec3 viewCenter(Minecraft mc) {
         if (active && instance != null && instance.controller.isRunning()) {
             return instance.cameraPosition();
         }
-        return mc.field_1724 != null ? mc.field_1724.method_73189() : class_243.field_1353;
+        return mc.player != null ? mc.player.position() : Vec3.ZERO;
     }
 
     /** Called once per rendered frame (not per tick) so the camera moves smoothly at any frame rate. */
     public static void frame() {
         if (active && instance != null) {
-            instance.controller.frame(class_310.method_1551());
+            instance.controller.frame(Minecraft.getInstance());
         }
     }
 
-    public class_243 cameraPosition() {
+    public Vec3 cameraPosition() {
         return controller.eyePosition();
     }
 
@@ -221,8 +221,8 @@ public final class FreecamModule extends Module {
     }
 
     /** Mouse look: rotates the camera instead of the player. Returns true when the event was consumed. */
-    public static boolean handleTurn(class_1297 self, double yawDelta, double pitchDelta) {
-        if (!active || instance == null || self != class_310.method_1551().field_1724) {
+    public static boolean handleTurn(Entity self, double yawDelta, double pitchDelta) {
+        if (!active || instance == null || self != Minecraft.getInstance().player) {
             return false;
         }
         if (!instance.controller.isRunning() || instance.controller.controlBody()) {
@@ -237,8 +237,8 @@ public final class FreecamModule extends Module {
         if (!active || instance == null || verticalAmount == 0) {
             return false;
         }
-        class_310 mc = class_310.method_1551();
-        if (mc.field_1755 != null || !instance.scrollSpeed.get() || instance.controller.controlBody()) {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.screen != null || !instance.scrollSpeed.get() || instance.controller.controlBody()) {
             return false;
         }
         instance.controller.adjustSpeed(mc, verticalAmount > 0 ? 1 : -1);
@@ -246,19 +246,19 @@ public final class FreecamModule extends Module {
     }
 
     /** Hides vanilla movement/interaction keys while the camera is being flown. */
-    public static boolean shouldBlock(class_304 key) {
+    public static boolean shouldBlock(KeyMapping key) {
         if (!active || bypass || instance == null) {
             return false;
         }
-        class_315 o = class_310.method_1551().field_1690;
+        Options o = Minecraft.getInstance().options;
         if (o == null) {
             return false;
         }
-        if (key == o.field_1894 || key == o.field_1881 || key == o.field_1913 || key == o.field_1849
-                || key == o.field_1903 || key == o.field_1832 || key == o.field_1867) {
+        if (key == o.keyUp || key == o.keyDown || key == o.keyLeft || key == o.keyRight
+                || key == o.keyJump || key == o.keyShift || key == o.keySprint) {
             return !instance.controller.controlBody();
         }
-        if (key == o.field_1886 || key == o.field_1904 || key == o.field_1871) {
+        if (key == o.keyAttack || key == o.keyUse || key == o.keyPickItem) {
             return !instance.allowInteraction.get();
         }
         return false;
