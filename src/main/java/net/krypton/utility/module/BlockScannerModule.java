@@ -30,14 +30,14 @@ import java.util.Map;
  * Highlights the blocks chosen by the user in the chunks the client has already received. It only reads local world
  * data (it cannot reveal anything the server did not send) and sends nothing.
  *
- * <p>Work is bounded: a few chunks per tick, empty sections are skipped, block lookup is a hash map on the Block
+ * <p>Work is bounded by a time budget per tick, empty sections are skipped, block lookup is a hash map on the Block
  * instance, and every chunk result is cached until it expires or the selection changes.
  */
 public final class BlockScannerModule extends Module implements HighlightSource {
     private record Hit(long pos, Block block) {
     }
 
-    private record CachedChunk(List<Hit> hits, int scannedAt) {
+    private record CachedChunk(List<Hit> hits, int scannedAt, int scannedY) {
     }
 
     public final BlockListSetting blocks;
@@ -45,8 +45,6 @@ public final class BlockScannerModule extends Module implements HighlightSource 
     public final NumberSetting rangeUp;
     public final NumberSetting rangeDown;
     public final BoolSetting exposedOnly;
-    public final NumberSetting scanInterval;
-    public final NumberSetting chunksPerTick;
     public final ModeSetting style;
     public final NumberSetting opacity;
     public final NumberSetting maxBoxes;
@@ -72,10 +70,6 @@ public final class BlockScannerModule extends Module implements HighlightSource 
         rangeUp = add(new NumberSetting("range_up", "Range above you (blocks)", 48, 8, 128, 8));
         rangeDown = add(new NumberSetting("range_down", "Range below you (blocks)", 48, 8, 128, 8));
         exposedOnly = add(new BoolSetting("exposed_only", "Only blocks touching air or a transparent block", false));
-
-        group("Performance");
-        scanInterval = add(new NumberSetting("scan_interval", "Rescan interval (ticks)", 100, 20, 600, 20));
-        chunksPerTick = add(new NumberSetting("chunks_per_tick", "Chunks scanned per tick", 2, 1, 6, 1));
 
         group("Display");
         style = add(new ModeSetting("style", "Style", "Filled", EspRenderer.STYLES));
@@ -133,27 +127,37 @@ public final class BlockScannerModule extends Module implements HighlightSource 
             return Math.abs(cx - pcx) > r + 1 || Math.abs(cz - pcz) > r + 1;
         });
 
-        int budget = chunksPerTick.asInt();
-        int interval = scanInterval.asInt();
+        // Automatic scheduling, nothing to configure:
+        //  - chunks are visited nearest first and the work is capped by a time budget (about 2 ms per tick), so the
+        //    game never stutters whatever the radius or the machine;
+        //  - near chunks are refreshed often, far ones rarely;
+        //  - a chunk is also refreshed when you moved vertically far from where it was scanned (the Y window moved).
+        long deadline = System.nanoTime() + 2_000_000L;
+        int scanned = 0;
         int py = (int) Math.floor(center.y);
-        for (int ring = 0; ring <= r && budget > 0; ring++) {
-            for (int dx = -ring; dx <= ring && budget > 0; dx++) {
-                for (int dz = -ring; dz <= ring && budget > 0; dz++) {
+        for (int ring = 0; ring <= r; ring++) {
+            int interval = ring <= 1 ? 40 : ring <= 3 ? 100 : 200;
+            for (int dx = -ring; dx <= ring; dx++) {
+                for (int dz = -ring; dz <= ring; dz++) {
                     if (Math.max(Math.abs(dx), Math.abs(dz)) != ring) {
                         continue;
                     }
                     int cx = pcx + dx;
                     int cz = pcz + dz;
                     CachedChunk cached = cache.get(key(cx, cz));
-                    if (cached != null && tickCounter - cached.scannedAt() < interval) {
+                    if (cached != null && tickCounter - cached.scannedAt() < interval
+                            && Math.abs(py - cached.scannedY()) <= 16) {
                         continue;
+                    }
+                    if (scanned > 0 && System.nanoTime() > deadline) {
+                        return;
                     }
                     LevelChunk chunk = level.getChunkSource().getChunkNow(cx, cz);
                     if (chunk == null) {
                         continue;
                     }
                     cache.put(key(cx, cz), scan(level, chunk, cx, cz, py, targets));
-                    budget--;
+                    scanned++;
                 }
             }
         }
@@ -166,7 +170,7 @@ public final class BlockScannerModule extends Module implements HighlightSource 
         int y1 = Math.min(maxY, py + rangeUp.asInt());
         List<Hit> hits = new ArrayList<>();
         if (y0 > y1) {
-            return new CachedChunk(hits, tickCounter);
+            return new CachedChunk(hits, tickCounter, py);
         }
         boolean exposed = exposedOnly.get();
         LevelChunkSection[] sections = chunk.getSections();
@@ -198,7 +202,7 @@ public final class BlockScannerModule extends Module implements HighlightSource 
                 }
             }
         }
-        return new CachedChunk(hits, tickCounter);
+        return new CachedChunk(hits, tickCounter, py);
     }
 
     private static boolean isExposed(ClientLevel level, BlockPos pos, BlockPos.MutableBlockPos tmp) {
