@@ -1,6 +1,7 @@
 package net.krypton.utility.module;
 
 import net.krypton.utility.core.Category;
+import net.krypton.utility.render.Projector;
 import net.krypton.utility.core.Module;
 import net.krypton.utility.core.setting.BoolSetting;
 import net.krypton.utility.core.setting.ColorSetting;
@@ -9,24 +10,24 @@ import net.krypton.utility.core.setting.NumberSetting;
 import net.krypton.utility.render.EspRenderer;
 import net.krypton.utility.render.HighlightSource;
 import net.krypton.utility.render.Target;
-import net.minecraft.class_1297;
-import net.minecraft.class_1309;
-import net.minecraft.class_1542;
-import net.minecraft.class_1569;
-import net.minecraft.class_1657;
-import net.minecraft.class_238;
-import net.minecraft.class_243;
-import net.minecraft.class_2586;
-import net.minecraft.class_2595;
-import net.minecraft.class_2601;
-import net.minecraft.class_2611;
-import net.minecraft.class_2614;
-import net.minecraft.class_2627;
-import net.minecraft.class_2646;
-import net.minecraft.class_2818;
-import net.minecraft.class_310;
-import net.minecraft.class_3719;
-import net.minecraft.class_638;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.entity.monster.Enemy;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.block.entity.ChestBlockEntity;
+import net.minecraft.world.level.block.entity.DispenserBlockEntity;
+import net.minecraft.world.level.block.entity.EnderChestBlockEntity;
+import net.minecraft.world.level.block.entity.HopperBlockEntity;
+import net.minecraft.world.level.block.entity.ShulkerBoxBlockEntity;
+import net.minecraft.world.level.block.entity.TrappedChestBlockEntity;
+import net.minecraft.world.level.chunk.LevelChunk;
+import net.minecraft.client.Minecraft;
+import net.minecraft.world.level.block.entity.BarrelBlockEntity;
+import net.minecraft.client.multiplayer.ClientLevel;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -44,7 +45,7 @@ public final class EspModule extends Module implements HighlightSource {
         }
     }
 
-    private record CachedContainer(class_238 box, ContainerKind kind) {
+    private record CachedContainer(AABB box, ContainerKind kind) {
     }
 
     // Targets
@@ -89,7 +90,7 @@ public final class EspModule extends Module implements HighlightSource {
 
     private final List<CachedContainer> containerCache = new ArrayList<>();
     private int refreshTimer;
-    private class_243 lastScanCenter = class_243.field_1353;
+    private Vec3 lastScanCenter = Vec3.ZERO;
 
     public EspModule() {
         super("esp", "ESP Boxes", "Bounding boxes around entities and storage blocks.", Category.VISUALS, false);
@@ -157,14 +158,14 @@ public final class EspModule extends Module implements HighlightSource {
     // ------------------------------------------------------------------ storage scan (loaded chunks only)
 
     @Override
-    public void onTick(class_310 mc) {
-        if (!containers.get() || mc.field_1687 == null || mc.field_1724 == null) {
+    public void onTick(Minecraft mc) {
+        if (!containers.get() || mc.level == null || mc.player == null) {
             containerCache.clear();
             return;
         }
-        class_243 center = FreecamModule.viewCenter(mc);
+        Vec3 center = FreecamModule.viewCenter(mc);
         // rescan right away when the viewpoint (free camera) has travelled far since the last scan
-        boolean moved = center.method_1025(lastScanCenter) > 64.0;
+        boolean moved = center.distanceToSqr(lastScanCenter) > 64.0;
         if (refreshTimer-- > 0 && !moved) {
             return;
         }
@@ -196,55 +197,55 @@ public final class EspModule extends Module implements HighlightSource {
         };
     }
 
-    private static ContainerKind kindOf(class_2586 be) {
-        if (be instanceof class_2646) {
+    private static ContainerKind kindOf(BlockEntity be) {
+        if (be instanceof TrappedChestBlockEntity) {
             return ContainerKind.TRAPPED;
         }
-        if (be instanceof class_2595) {
+        if (be instanceof ChestBlockEntity) {
             return ContainerKind.CHEST;
         }
-        if (be instanceof class_2611) {
+        if (be instanceof EnderChestBlockEntity) {
             return ContainerKind.ENDER;
         }
-        if (be instanceof class_2627) {
+        if (be instanceof ShulkerBoxBlockEntity) {
             return ContainerKind.SHULKER;
         }
-        if (be instanceof class_3719) {
+        if (be instanceof BarrelBlockEntity) {
             return ContainerKind.BARREL;
         }
-        if (be instanceof class_2614) {
+        if (be instanceof HopperBlockEntity) {
             return ContainerKind.HOPPER;
         }
-        if (be instanceof class_2601) {
+        if (be instanceof DispenserBlockEntity) {
             return ContainerKind.DISPENSER;
         }
         return null;
     }
 
-    private void scanContainers(class_310 mc, class_243 center) {
-        class_638 level = mc.field_1687;
+    private void scanContainers(Minecraft mc, Vec3 center) {
+        ClientLevel level = mc.level;
         List<CachedContainer> found = new ArrayList<>();
         int radius = range.asInt() / 16 + 1;
-        int pcx = ((int) Math.floor(center.field_1352)) >> 4;
-        int pcz = ((int) Math.floor(center.field_1350)) >> 4;
+        int pcx = ((int) Math.floor(center.x)) >> 4;
+        int pcz = ((int) Math.floor(center.z)) >> 4;
         for (int cx = pcx - radius; cx <= pcx + radius; cx++) {
             for (int cz = pcz - radius; cz <= pcz + radius; cz++) {
-                class_2818 chunk = level.method_2935().method_21730(cx, cz);
+                LevelChunk chunk = level.getChunkSource().getChunkNow(cx, cz);
                 if (chunk == null) {
                     continue;
                 }
-                for (class_2586 be : chunk.method_12214().values()) {
+                for (BlockEntity be : chunk.getBlockEntities().values()) {
                     ContainerKind kind = kindOf(be);
                     if (kind == null) {
                         continue;
                     }
-                    class_238 box = new class_238(be.method_11016());
+                    AABB box = new AABB(be.getBlockPos());
                     if (kind == ContainerKind.CHEST || kind == ContainerKind.TRAPPED || kind == ContainerKind.ENDER) {
                         // the real chest model: 14/16 wide, 14/16 tall, resting on the floor of the block
-                        double x = be.method_11016().method_10263();
-                        double y = be.method_11016().method_10264();
-                        double z = be.method_11016().method_10260();
-                        box = new class_238(x + 0.0625, y, z + 0.0625, x + 0.9375, y + 0.875, z + 0.9375);
+                        double x = be.getBlockPos().getX();
+                        double y = be.getBlockPos().getY();
+                        double z = be.getBlockPos().getZ();
+                        box = new AABB(x + 0.0625, y, z + 0.0625, x + 0.9375, y + 0.875, z + 0.9375);
                     }
                     found.add(new CachedContainer(box, kind));
                 }
@@ -276,10 +277,10 @@ public final class EspModule extends Module implements HighlightSource {
         return healthBars.get();
     }
 
-    private String label(String name, double distSq, class_1309 living) {
+    private String label(String name, double distSq, LivingEntity living) {
         StringBuilder sb = new StringBuilder(name);
         if (showHealth.get() && living != null) {
-            sb.append("  ").append(String.format(Locale.ROOT, "%.0f/%.0f", living.method_6032(), living.method_6063()));
+            sb.append("  ").append(String.format(Locale.ROOT, "%.0f/%.0f", living.getHealth(), living.getMaxHealth()));
         }
         if (showDistance.get()) {
             sb.append("  ").append((int) Math.sqrt(distSq)).append('m');
@@ -289,37 +290,37 @@ public final class EspModule extends Module implements HighlightSource {
 
     @Override
     public void collect(float pt, List<Target> out) {
-        class_310 mc = class_310.method_1551();
-        if (mc.field_1687 == null || mc.field_1724 == null) {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.level == null || mc.player == null) {
             return;
         }
-        class_243 cam = mc.field_1773.method_19418().method_71156();
+        Vec3 cam = Projector.camera();
         double maxSq = range.asDouble() * range.asDouble();
         double minSq = minRange.asDouble() * minRange.asDouble();
         double pad = padding.asDouble();
         List<Target> found = new ArrayList<>();
 
-        for (class_1297 e : mc.field_1687.method_18112()) {
-            if (e == mc.field_1724 && !(FreecamModule.isActive() && showOwnBody.get())) {
+        for (Entity e : mc.level.entitiesForRendering()) {
+            if (e == mc.player && !(FreecamModule.isActive() && showOwnBody.get())) {
                 continue;
             }
             int color;
-            if (e instanceof class_1657) {
+            if (e instanceof Player) {
                 if (!players.get()) {
                     continue;
                 }
                 color = playerColor.argb();
-            } else if (e instanceof class_1569) {
+            } else if (e instanceof Enemy) {
                 if (!hostile.get()) {
                     continue;
                 }
                 color = hostileColor.argb();
-            } else if (e instanceof class_1542) {
+            } else if (e instanceof ItemEntity) {
                 if (!items.get()) {
                     continue;
                 }
                 color = itemColor.argb();
-            } else if (e instanceof class_1309) {
+            } else if (e instanceof LivingEntity) {
                 if (!passive.get()) {
                     continue;
                 }
@@ -327,18 +328,18 @@ public final class EspModule extends Module implements HighlightSource {
             } else {
                 continue;
             }
-            class_243 lp = e.method_30950(pt);
-            double d = lp.method_1025(cam);
+            Vec3 lp = e.getPosition(pt);
+            double d = lp.distanceToSqr(cam);
             if (d > maxSq || d < minSq) {
                 continue;
             }
-            class_238 box = e.method_5829().method_989(lp.field_1352 - e.method_23317(), lp.field_1351 - e.method_23318(), lp.field_1350 - e.method_23321()).method_1014(pad);
-            String name = e instanceof class_1542 ie ? ie.method_6983().method_7964().getString() : e.method_5477().getString();
+            AABB box = e.getBoundingBox().move(lp.x - e.getX(), lp.y - e.getY(), lp.z - e.getZ()).inflate(pad);
+            String name = e instanceof ItemEntity ie ? ie.getItem().getHoverName().getString() : e.getName().getString();
             float health = -1f;
-            if (e instanceof class_1309 le && le.method_6063() > 0f) {
-                health = le.method_6032() / le.method_6063();
+            if (e instanceof LivingEntity le && le.getMaxHealth() > 0f) {
+                health = le.getHealth() / le.getMaxHealth();
             }
-            found.add(new Target(box, color, labels.get() ? label(name, d, e instanceof class_1309 le2 ? le2 : null) : null, d, health));
+            found.add(new Target(box, color, labels.get() ? label(name, d, e instanceof LivingEntity le2 ? le2 : null) : null, d, health));
         }
 
         if (containers.get()) {
@@ -346,11 +347,11 @@ public final class EspModule extends Module implements HighlightSource {
                 if (!enabledKind(c.kind())) {
                     continue;
                 }
-                double d = c.box().method_1005().method_1025(cam);
+                double d = c.box().getCenter().distanceToSqr(cam);
                 if (d > maxSq || d < minSq) {
                     continue;
                 }
-                found.add(new Target(c.box().method_1014(pad), colorOf(c.kind()), labels.get() ? label(c.kind().label, d, null) : null, d));
+                found.add(new Target(c.box().inflate(pad), colorOf(c.kind()), labels.get() ? label(c.kind().label, d, null) : null, d));
             }
         }
 
