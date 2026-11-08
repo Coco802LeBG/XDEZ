@@ -1,0 +1,16 @@
+{
+  "key.category.krypton_utility.main": "Krypton Utility",
+  "key.krypton_utility.open_gui": "Ouvrir le ClickGUI",
+  "key.krypton_utility.toggle_freecam": "Activer/désactiver la Freecam",
+  "key.krypton_utility.freecam_boost": "Freecam : accélérer (maintenir)",
+  "key.krypton_utility.freecam_slow": "Freecam : ralentir (maintenir)",
+  "key.krypton_utility.freecam_speed_up": "Freecam : augmenter la vitesse",
+  "key.krypton_utility.freecam_speed_down": "Freecam : diminuer la vitesse",
+  "key.krypton_utility.freecam_return_start": "Freecam : retour au point de départ",
+  "key.krypton_utility.freecam_snap_body": "Freecam : caméra sur mon corps",
+  "key.krypton_utility.freecam_toggle_control": "Freecam : basculer caméra / corps",
+  "key.krypton_utility.freecam_follow_next": "Freecam : suivre l'entité suivante",
+  "key.krypton_utility.freecam_follow_looked": "Freecam : suivre l'entité visée / arrêter",
+  "key.krypton_utility.freecam_toggle_collisions": "Freecam : activer/désactiver les collisions",
+  "key.krypton_utility.freecam_teleport_body": "Freecam : déplacer le corps à la caméra (visible serveur)"
+}

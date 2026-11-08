@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "id": "krypton_utility",
+  "version": "${version}",
+  "name": "Krypton Utility",
+  "description": "Client-side utility suite: ClickGUI, customizable HUD, Freecam, Fullbright, ESP boxes, block scanner and inventory tools.",
+  "authors": ["Krypton"],
+  "license": "MIT",
+  "environment": "client",
+  "entrypoints": {
+    "client": ["net.krypton.utility.KryptonUtility"]
+  },
+  "mixins": [
+    { "config": "krypton_utility.mixins.json", "environment": "client" }
+  ],
+  "depends": {
+    "fabricloader": ">=0.18.0",
+    "minecraft": "~1.21.11",
+    "java": ">=21",
+    "fabric-api": "*"
+  }
+}

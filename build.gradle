@@ -1,0 +1,79 @@
+plugins {
+    id 'fabric-loom' version "${loom_version}"
+    id 'maven-publish'
+}
+
+version = project.mod_version
+group = project.maven_group
+
+base {
+    archivesName = project.archives_base_name
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:${project.minecraft_version}"
+    // Fabric API's own 1.21.11 branch is built against the official Mojang names.
+    mappings loom.officialMojangMappings()
+
+    modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
+    modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+}
+
+processResources {
+    inputs.property "version", project.version
+    filesMatching("fabric.mod.json") {
+        expand "version": inputs.properties.version
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    it.options.release = 21
+    it.options.encoding = 'UTF-8'
+}
+
+java {
+    withSourcesJar()
+    sourceCompatibility = JavaVersion.VERSION_21
+    targetCompatibility = JavaVersion.VERSION_21
+}
+
+jar {
+    from("LICENSE") {
+        rename { "${it}_${project.base.archivesName.get()}" }
+    }
+}
+
+// Transparency check: the mod must stay 100% local. The build fails if any source file touches the network,
+// spawns processes, reads environment/user identity, or uses reflection/encoding tricks that would hide behaviour.
+tasks.register('verifyLocalOnly') {
+    group = 'verification'
+    description = 'Fails the build if the sources contain network, process, environment or obfuscation primitives.'
+    def sources = fileTree('src/main') { include '**/*.java' }
+    inputs.files(sources)
+    doLast {
+        def banned = ['java.net', 'javax.net', 'HttpClient', 'HttpURLConnection', 'Socket', 'URLConnection',
+                      'ProcessBuilder', 'Runtime.getRuntime', 'System.getenv', 'user.home', 'user.name',
+                      'http://', 'https://', 'Base64', 'Class.forName', 'defineClass', 'ScriptEngine', 'sun.misc.Unsafe']
+        def problems = []
+        sources.each { f ->
+            f.readLines().eachWithIndex { line, i ->
+                banned.each { b ->
+                    if (line.contains(b)) {
+                        problems << "${f.name}:${i + 1} contains '${b}'"
+                    }
+                }
+            }
+        }
+        if (!problems.isEmpty()) {
+            throw new GradleException("verifyLocalOnly failed:\n  " + problems.join("\n  "))
+        }
+    }
+}
+
+tasks.named('check') {
+    dependsOn 'verifyLocalOnly'
+}
